@@ -1,4 +1,4 @@
-name: Cherry-pick to ddg_140
+name: Cherry-pick to release branches
 
 on:
   pull_request:
@@ -8,10 +8,38 @@ on:
 
 
 jobs:
-  cherry-pick:
+  setup:
     # Only run if the PR was merged (not just closed)
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    outputs:
+      branches: ${{ steps.get-branches.outputs.branches }}
+    
+    steps:
+      - name: Get release branches
+        id: get-branches
+        run: |
+          # Get the RELEASE_BRANCHES variable and convert to JSON array
+          BRANCHES="${{ vars.RELEASE_BRANCHES }}"
+          
+          if [ -z "$BRANCHES" ]; then
+            echo "No release branches configured in RELEASE_BRANCHES variable"
+            echo "branches=[]" >> $GITHUB_OUTPUT
+          else
+            # Convert space-separated list to JSON array
+            JSON_ARRAY=$(echo "$BRANCHES" | tr ' ' '\n' | jq -R . | jq -s .)
+            echo "branches=${JSON_ARRAY}" >> $GITHUB_OUTPUT
+            echo "Will cherry-pick to branches: ${branches}"
+          fi
+
+  cherry-pick:
+    needs: setup
+    if: needs.setup.outputs.branches != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false  # Continue with other branches even if one fails
+      matrix:
+        branch: ${{ fromJson(needs.setup.outputs.branches) }}
     
     permissions:
       contents: write
@@ -22,6 +50,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history for cherry-picking
+          
       - name: Show GitHub context
         env:
           GITHUB_CONTEXT: ${{ toJson(github) }}
@@ -33,30 +62,33 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           
-      - name: Cherry-pick
+      - name: Cherry-pick to ${{ matrix.branch }}
         id: create-branch
         run: |
+          TARGET_BRANCH="${{ matrix.branch }}"
+          
           # Fetch the target branch
-          git fetch origin ddg_140:ddg_140
+          git fetch origin ${TARGET_BRANCH}:${TARGET_BRANCH}
           
           # Create a unique branch name for the cherry-pick
-          BRANCH_NAME="cherry-pick-pr-${{ github.event.pull_request.number }}-to-ddg_140"
+          BRANCH_NAME="cherry-pick-pr-${{ github.event.pull_request.number }}-to-${TARGET_BRANCH}"
           MERGE_COMMIT="${{ github.sha }}"
 
           echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "target_branch=${TARGET_BRANCH}" >> $GITHUB_OUTPUT
           
-          # Create and checkout the new branch from ddg_140
-          git checkout -b ${BRANCH_NAME} ddg_140
+          # Create and checkout the new branch from target branch
+          git checkout -b ${BRANCH_NAME} ${TARGET_BRANCH}
           
           # Attempt cherry-pick and capture success/failure
           if git cherry-pick ${MERGE_COMMIT}; then
-            echo "Cherry-pick successful"
+            echo "Cherry-pick successful for ${TARGET_BRANCH}"
             echo "CHERRY_PICK_SUCCESSFUL=true" >> $GITHUB_OUTPUT
             
             # Push the branch if cherry-pick was successful
             git push origin ${BRANCH_NAME}
           else
-            echo "Cherry-pick failed - conflicts detected"
+            echo "Cherry-pick failed for ${TARGET_BRANCH} - conflicts detected"
             echo "CHERRY_PICK_SUCCESSFUL=false" >> $GITHUB_OUTPUT
             
             # Show the conflicted files for debugging
@@ -78,12 +110,13 @@ jobs:
           # Use the original PR's title and body
           ORIGINAL_TITLE="${{ github.event.pull_request.title }}"
           ORIGINAL_BODY="${{ github.event.pull_request.body }}"
+          TARGET_BRANCH="${{ steps.create-branch.outputs.target_branch }}"
           
           # Create the pull request with the same title and body as the original
           gh pr create \
-            --base ddg_140 \
+            --base ${TARGET_BRANCH} \
             --head ${{ steps.create-branch.outputs.branch_name }} \
-            --title "[Cherry-pick to ddg_140] ${ORIGINAL_TITLE}" \
+            --title "[Cherry-pick to ${TARGET_BRANCH}] ${ORIGINAL_TITLE}" \
             --body "${ORIGINAL_BODY}
           
           ---
