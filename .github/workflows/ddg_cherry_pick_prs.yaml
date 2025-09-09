@@ -49,7 +49,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history for cherry-picking
+          fetch-depth: 0
+          ref: ${{ matrix.branch }}
           
       - name: Show GitHub context
         env:
@@ -98,9 +99,6 @@ jobs:
           TARGET_BRANCH="${{ matrix.branch }}"
           MERGE_COMMIT="${{ github.sha }}"
           PR_NUMBER="${{ github.event.pull_request.number }}"
-
-          # Fetch the target branch
-          git fetch origin ${TARGET_BRANCH}:${TARGET_BRANCH}
           
           # Create a unique branch name for the cherry-pick
           BRANCH_NAME="cherry-pick-pr-${PR_NUMBER}-to-${TARGET_BRANCH}"
@@ -109,7 +107,7 @@ jobs:
           echo "target_branch=${TARGET_BRANCH}" >> $GITHUB_OUTPUT
           
           # Create and checkout the new branch from target branch
-          git checkout -b ${BRANCH_NAME} ${TARGET_BRANCH}
+          git checkout -b ${BRANCH_NAME}
           
           # Attempt cherry-pick and capture success/failure
           if git cherry-pick ${MERGE_COMMIT}; then
