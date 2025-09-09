@@ -51,7 +51,7 @@ jobs:
         id: cherry-pick
         run: |
           # Get the merge commit SHA
-          MERGE_COMMIT="${{ github.event.pull_request.commit_sha }}"
+          MERGE_COMMIT="${{ github.sha }}"
           
           # Cherry-pick the squashed merge commit
           if git cherry-pick -m 2 ${MERGE_COMMIT}; then
