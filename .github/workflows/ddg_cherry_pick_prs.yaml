@@ -137,12 +137,6 @@ jobs:
             exit 1
           fi
           
-      - name: Comment on PR when skipped (not squash merge)
-        if: steps.create-branch.outputs.CHERRY_PICK_SUCCESSFUL == 'skipped'
-        env:
-          GH_TOKEN: ${{ secrets.CPP_GITHUB_RW_TOKEN }}
-        run: |
-          
       - name: Comment on PR for cherry-pick failure
         if: steps.create-branch.outputs.CHERRY_PICK_SUCCESSFUL == 'false'
         env:
