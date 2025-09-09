@@ -63,6 +63,8 @@ jobs:
 
           
       - name: Check if PR is squash-merged
+        env:
+          GH_TOKEN: ${{ secrets.CPP_GITHUB_RW_TOKEN }}
         run: |
           TARGET_BRANCH="${{ matrix.branch }}"
           MERGE_COMMIT="${{ github.sha }}"
