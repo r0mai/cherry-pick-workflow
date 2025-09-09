@@ -1,4 +1,4 @@
-name: Cherry-pick to release branches
+name: DDG Cherry-pick PRs to release branches
 
 on:
   pull_request:
