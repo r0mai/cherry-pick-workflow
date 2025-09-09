@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [closed]
     branches:
-      - master # Adjust this to your default branch if different
+      - master
 
 
 jobs:
