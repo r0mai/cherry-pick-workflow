@@ -75,9 +75,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.CPP_GITHUB_RW_TOKEN }}
         run: |
-          # Create the pull request
+          # Use the original PR's title and body
+          ORIGINAL_TITLE="${{ github.event.pull_request.title }}"
+          ORIGINAL_BODY="${{ github.event.pull_request.body }}"
+          
+          # Create the pull request with the same title and body as the original
           gh pr create \
             --base ddg_140 \
             --head ${{ steps.create-branch.outputs.branch_name }} \
-            --title "Cherry-pick PR #${{ github.event.pull_request.number }} to ddg_140" \
-            --body "Cherry-pick of #${{ github.event.pull_request.number }}"
+            --title "[Cherry-pick to ddg_140] ${ORIGINAL_TITLE}" \
+            --body "${ORIGINAL_BODY}
+          
+          ---
+          Cherry-picked from #${{ github.event.pull_request.number }}"
