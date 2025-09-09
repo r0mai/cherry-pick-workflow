@@ -53,11 +53,23 @@ jobs:
           # Get the merge commit SHA
           MERGE_COMMIT="${{ github.sha }}"
           
+          echo "Current branch: $(git branch --show-current)"
+          echo "Current HEAD: $(git rev-parse HEAD)"
+          echo "Target branch HEAD: $(git rev-parse ddg_140)"
+          
           # Cherry-pick the squashed merge commit
           if git cherry-pick ${MERGE_COMMIT}; then
             echo "cherry_pick_success=true" >> $GITHUB_OUTPUT
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
-            echo "✅ Successfully cherry-picked commit ${MERGE_COMMIT} as $(git rev-parse HEAD)"
+            NEW_COMMIT=$(git rev-parse HEAD)
+            echo "✅ Successfully cherry-picked commit ${MERGE_COMMIT} as ${NEW_COMMIT}"
+            echo "new_commit=${NEW_COMMIT}" >> $GITHUB_OUTPUT
+            
+            # Verify the cherry-pick actually created a new commit
+            echo "Commits on branch after cherry-pick:"
+            git log --oneline -5
+            echo "Diff with target branch:"
+            git log --oneline ddg_140..HEAD
           else
             echo "has_conflicts=true" >> $GITHUB_OUTPUT
             echo "❌ Cherry-pick failed due to conflicts. Not attempting automatic resolution."
@@ -75,7 +87,13 @@ jobs:
       - name: Push cherry-pick branch
         if: steps.cherry-pick.outputs.cherry_pick_success == 'true'
         run: |
-          git push origin ${{ steps.create-branch.outputs.branch_name }}
+          echo "Pushing branch ${{ steps.create-branch.outputs.branch_name }}"
+          echo "Current HEAD before push: $(git rev-parse HEAD)"
+          echo "Branch status:"
+          git status
+          echo "Pushing to origin..."
+          git push origin HEAD:${{ steps.create-branch.outputs.branch_name }}
+          echo "Push completed"
           
       - name: Create Pull Request
         if: steps.cherry-pick.outputs.cherry_pick_success == 'true'
