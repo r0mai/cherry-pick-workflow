@@ -1,0 +1,165 @@
+name: Cherry-pick to ddg_140
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main  # Adjust this to your default branch if different
+
+jobs:
+  cherry-pick:
+    # Only run if the PR was merged (not just closed)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for cherry-picking
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+      - name: Create cherry-pick branch
+        id: create-branch
+        run: |
+          # Fetch the target branch
+          git fetch origin ddg_140:ddg_140
+          
+          # Create a unique branch name for the cherry-pick
+          BRANCH_NAME="cherry-pick-pr-${{ github.event.pull_request.number }}-to-ddg_140"
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          
+          # Create and checkout the new branch from ddg_140
+          git checkout -b ${BRANCH_NAME} ddg_140
+          
+      - name: Cherry-pick the merged commit
+        id: cherry-pick
+        run: |
+          # Get the merge commit SHA
+          MERGE_COMMIT="${{ github.event.pull_request.merge_commit_sha }}"
+          
+          # Cherry-pick the squashed merge commit
+          if git cherry-pick -m 1 ${MERGE_COMMIT}; then
+            echo "cherry_pick_success=true" >> $GITHUB_OUTPUT
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            echo "✅ Successfully cherry-picked commit ${MERGE_COMMIT}"
+          else
+            echo "has_conflicts=true" >> $GITHUB_OUTPUT
+            echo "❌ Cherry-pick failed due to conflicts. Not attempting automatic resolution."
+            
+            # Capture conflict details
+            echo "conflict_files<<EOF" >> $GITHUB_OUTPUT
+            git diff --name-only --diff-filter=U >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            
+            # Mark as failed
+            echo "cherry_pick_success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+      - name: Push cherry-pick branch
+        if: steps.cherry-pick.outputs.cherry_pick_success == 'true'
+        run: |
+          git push origin ${{ steps.create-branch.outputs.branch_name }}
+          
+      - name: Create Pull Request
+        if: steps.cherry-pick.outputs.cherry_pick_success == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ steps.create-branch.outputs.branch_name }}
+          base: ddg_140
+          title: "[Cherry-pick] ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})"
+          body: |
+            ## 🍒 Cherry-pick of PR #${{ github.event.pull_request.number }}
+            
+            This PR cherry-picks the changes from PR #${{ github.event.pull_request.number }} to the `ddg_140` branch.
+            
+            ### Original PR Information
+            - **Title:** ${{ github.event.pull_request.title }}
+            - **Author:** @${{ github.event.pull_request.user.login }}
+            - **Merged by:** @${{ github.event.pull_request.merged_by.login }}
+            - **Merge commit:** ${{ github.event.pull_request.merge_commit_sha }}
+            
+            ### Original PR Description
+            ${{ github.event.pull_request.body }}
+            
+            ---
+            *This PR was automatically created by the cherry-pick workflow.*
+          labels: |
+            cherry-pick
+            automated
+          assignees: ${{ github.event.pull_request.user.login }}
+          reviewers: ${{ github.event.pull_request.merged_by.login }}
+          
+      - name: Comment on original PR
+        if: steps.cherry-pick.outputs.cherry_pick_success == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const cherryPickBranch = '${{ steps.create-branch.outputs.branch_name }}';
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `🍒 This PR has been successfully cherry-picked to the \`ddg_140\` branch!\n\nA new pull request has been created with branch \`${cherryPickBranch}\`.`
+            });
+            
+      - name: Handle cherry-pick failure
+        if: failure() && steps.cherry-pick.outputs.cherry_pick_success != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const prAuthor = context.payload.pull_request.user.login;
+            const hasConflicts = '${{ steps.cherry-pick.outputs.has_conflicts }}' === 'true';
+            const conflictFiles = `${{ steps.cherry-pick.outputs.conflict_files }}`;
+            
+            let message = `❌ **Cherry-pick Failed**\n\n`;
+            message += `@${prAuthor} - The automatic cherry-pick of this PR to the \`ddg_140\` branch has failed.\n\n`;
+            
+            if (hasConflicts && conflictFiles) {
+              message += `### Merge Conflicts Detected\n\n`;
+              message += `The following files have conflicts that need manual resolution:\n\n`;
+              conflictFiles.split('\n').filter(f => f.trim()).forEach(file => {
+                message += `- \`${file}\`\n`;
+              });
+              message += `\n`;
+            }
+            
+            message += `### Manual Cherry-pick Instructions\n\n`;
+            message += `Please cherry-pick this PR manually using the following commands:\n\n`;
+            message += `\`\`\`bash\n`;
+            message += `# Fetch the latest changes\n`;
+            message += `git fetch origin\n\n`;
+            message += `# Create a new branch from ddg_140\n`;
+            message += `git checkout -b cherry-pick-pr-${prNumber} origin/ddg_140\n\n`;
+            message += `# Cherry-pick the merge commit\n`;
+            message += `git cherry-pick -m 1 ${{ github.event.pull_request.merge_commit_sha }}\n\n`;
+            message += `# If there are conflicts, resolve them and then:\n`;
+            message += `git add .\n`;
+            message += `git cherry-pick --continue\n\n`;
+            message += `# Push the branch\n`;
+            message += `git push origin cherry-pick-pr-${prNumber}\n`;
+            message += `\`\`\`\n\n`;
+            message += `Then create a pull request from \`cherry-pick-pr-${prNumber}\` to \`ddg_140\`.\n\n`;
+            message += `---\n`;
+            message += `*If you need assistance with resolving the conflicts, please reach out to the team.*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: message
+            });
