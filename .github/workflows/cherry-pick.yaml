@@ -34,7 +34,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           
-      - name: Create cherry-pick branch
+      - name: Cherry-pick
         id: create-branch
         run: |
           # Fetch the target branch
@@ -49,7 +49,36 @@ jobs:
           # Create and checkout the new branch from ddg_140
           git checkout -b ${BRANCH_NAME} ddg_140
           
-
-          git cherry-pick ${MERGE_COMMIT}
-          git push origin ${BRANCH_NAME}
+          # Attempt cherry-pick and capture success/failure
+          if git cherry-pick ${MERGE_COMMIT}; then
+            echo "Cherry-pick successful"
+            echo "CHERRY_PICK_SUCCESSFUL=true" >> $GITHUB_OUTPUT
+            
+            # Push the branch if cherry-pick was successful
+            git push origin ${BRANCH_NAME}
+          else
+            echo "Cherry-pick failed - conflicts detected"
+            echo "CHERRY_PICK_SUCCESSFUL=false" >> $GITHUB_OUTPUT
+            
+            # Show the conflicted files for debugging
+            echo "Conflicted files:"
+            git status --short
+            
+            # Abort the cherry-pick to clean up
+            git cherry-pick --abort || true
+            
+            # Exit with error code to mark the step as failed
+            exit 1
+          fi
           
+      - name: Create PR
+        if: steps.create-branch.outputs.CHERRY_PICK_SUCCESSFUL == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create the pull request
+          gh pr create \
+            --base ddg_140 \
+            --head ${{ steps.create-branch.outputs.branch_name }} \
+            --title "Cherry-pick PR #${{ github.event.pull_request.number }} to ddg_140" \
+            --body "Cherry-pick of #${{ github.event.pull_request.number }}"
