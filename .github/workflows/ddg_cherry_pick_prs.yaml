@@ -101,7 +101,7 @@ jobs:
           PR_NUMBER="${{ github.event.pull_request.number }}"
           
           # Create a unique branch name for the cherry-pick
-          BRANCH_NAME="cherry-pick-pr-${PR_NUMBER}-to-${TARGET_BRANCH}"
+          BRANCH_NAME="dax/pr-${PR_NUMBER}-to-${TARGET_BRANCH}"
 
           echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
           echo "target_branch=${TARGET_BRANCH}" >> $GITHUB_OUTPUT
