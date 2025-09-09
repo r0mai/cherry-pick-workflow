@@ -64,6 +64,7 @@ jobs:
           
       - name: Cherry-pick to ${{ matrix.branch }}
         id: create-branch
+        continue-on-error: true  # Allow workflow to continue even if cherry-pick fails
         run: |
           TARGET_BRANCH="${{ matrix.branch }}"
           
@@ -91,6 +92,12 @@ jobs:
             echo "Cherry-pick failed for ${TARGET_BRANCH} - conflicts detected"
             echo "CHERRY_PICK_SUCCESSFUL=false" >> $GITHUB_OUTPUT
             
+            # Capture conflicted files for the comment
+            CONFLICTS=$(git status --short | head -20)
+            echo "conflicts<<EOF" >> $GITHUB_OUTPUT
+            echo "$CONFLICTS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            
             # Show the conflicted files for debugging
             echo "Conflicted files:"
             git status --short
@@ -101,6 +108,55 @@ jobs:
             # Exit with error code to mark the step as failed
             exit 1
           fi
+          
+      - name: Comment on PR for cherry-pick failure
+        if: steps.create-branch.outputs.CHERRY_PICK_SUCCESSFUL == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.CPP_GITHUB_RW_TOKEN }}
+        run: |
+          TARGET_BRANCH="${{ steps.create-branch.outputs.target_branch }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          CONFLICTS="${{ steps.create-branch.outputs.conflicts }}"
+          
+          # Create a comment on the original PR about the cherry-pick failure
+          cat > comment.md << 'EOF'
+          🚨 **Cherry-pick to `TARGET_BRANCH` failed**
+          
+          @PR_AUTHOR The automatic cherry-pick of this PR to the `TARGET_BRANCH` branch has failed due to merge conflicts.
+          
+          **Conflicted files:**
+          ```
+          CONFLICTS_LIST
+          ```
+          
+          **Next steps:**
+          1. Create a new branch from `TARGET_BRANCH`
+          2. Cherry-pick commit `COMMIT_SHA` manually
+          3. Resolve the conflicts
+          4. Create a pull request targeting `TARGET_BRANCH`
+          
+          **Manual cherry-pick commands:**
+          ```bash
+          git fetch origin
+          git checkout -b cherry-pick-pr-PR_NUMBER-to-TARGET_BRANCH origin/TARGET_BRANCH
+          git cherry-pick COMMIT_SHA
+          # Resolve conflicts, then:
+          git add .
+          git cherry-pick --continue
+          git push origin cherry-pick-pr-PR_NUMBER-to-TARGET_BRANCH
+          ```
+          EOF
+          
+          # Replace placeholders in the comment
+          sed -i "s/TARGET_BRANCH/${TARGET_BRANCH}/g" comment.md
+          sed -i "s/PR_AUTHOR/${PR_AUTHOR}/g" comment.md
+          sed -i "s/PR_NUMBER/${PR_NUMBER}/g" comment.md
+          sed -i "s/COMMIT_SHA/${{ github.sha }}/g" comment.md
+          sed -i "s/CONFLICTS_LIST/${CONFLICTS}/g" comment.md
+          
+          # Post the comment
+          gh pr comment ${PR_NUMBER} --body-file comment.md
           
       - name: Create PR
         if: steps.create-branch.outputs.CHERRY_PICK_SUCCESSFUL == 'true'
