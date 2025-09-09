@@ -57,7 +57,7 @@ jobs:
           if git cherry-pick ${MERGE_COMMIT}; then
             echo "cherry_pick_success=true" >> $GITHUB_OUTPUT
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
-            echo "✅ Successfully cherry-picked commit ${MERGE_COMMIT}"
+            echo "✅ Successfully cherry-picked commit ${MERGE_COMMIT} as ${git rev-parse HEAD}"
           else
             echo "has_conflicts=true" >> $GITHUB_OUTPUT
             echo "❌ Cherry-pick failed due to conflicts. Not attempting automatic resolution."
