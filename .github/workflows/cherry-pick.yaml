@@ -26,10 +26,10 @@ jobs:
             echo "No release branches configured in RELEASE_BRANCHES variable"
             echo "branches=[]" >> $GITHUB_OUTPUT
           else
-            # Convert space-separated list to JSON array
-            JSON_ARRAY=$(echo "$BRANCHES" | tr ' ' '\n' | jq -R . | jq -s .)
+            # Convert space-separated list to JSON array (compact format)
+            JSON_ARRAY=$(echo "$BRANCHES" | tr ' ' '\n' | jq -R . | jq -s . | jq -c .)
             echo "branches=${JSON_ARRAY}" >> $GITHUB_OUTPUT
-            echo "Will cherry-pick to branches: ${branches}"
+            echo "Will cherry-pick to branches: ${BRANCHES}"
           fi
 
   cherry-pick:
