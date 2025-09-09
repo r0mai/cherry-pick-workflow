@@ -23,11 +23,16 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for cherry-picking
           token: ${{ secrets.GITHUB_TOKEN }}
-          
+      - name: Show GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
+        
       - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
           
       - name: Create cherry-pick branch
         id: create-branch
