@@ -62,18 +62,48 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           
-      - name: Cherry-pick to ${{ matrix.branch }}
+      - name: Check if PR is squash-merged
+        run: |
+          TARGET_BRANCH="${{ matrix.branch }}"
+          MERGE_COMMIT="${{ github.sha }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          
+          # Check if the commit has a single parent (indicating squash merge)
+          PARENT_COUNT=$(git rev-list --parents -n 1 ${MERGE_COMMIT} | wc -w)
+          # Subtract 1 because the output includes the commit itself
+          PARENT_COUNT=$((PARENT_COUNT - 1))
+          
+          echo "Commit ${MERGE_COMMIT} has ${PARENT_COUNT} parent(s)"
+          
+          if [ "${PARENT_COUNT}" != "1" ]; then
+            echo "❌ Skipping cherry-pick: Commit is not from a squash merge (has ${PARENT_COUNT} parents)"
+            # Only comment once (check if we're on the first branch in the matrix)
+            FIRST_BRANCH="${{ fromJson(needs.setup.outputs.branches)[0] }}"
+            if [ "${TARGET_BRANCH}" = "${FIRST_BRANCH}" ]; then
+              cat > skip_comment.md << 'EOF'
+            ℹ️ **Cherry-pick workflow skipped**
+          
+            This PR was not merged using squash-merge. 
+            EOF
+              
+              gh pr comment ${PR_NUMBER} --body-file skip_comment.md
+            fi
+            exit 1
+          fi
+          echo "✅ Commit is from a squash merge, proceeding with cherry-pick"
+      - name: Create branch and cherry-pick
         id: create-branch
         continue-on-error: true  # Allow workflow to continue even if cherry-pick fails
         run: |
           TARGET_BRANCH="${{ matrix.branch }}"
-          
+          MERGE_COMMIT="${{ github.sha }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
           # Fetch the target branch
           git fetch origin ${TARGET_BRANCH}:${TARGET_BRANCH}
           
           # Create a unique branch name for the cherry-pick
-          BRANCH_NAME="cherry-pick-pr-${{ github.event.pull_request.number }}-to-${TARGET_BRANCH}"
-          MERGE_COMMIT="${{ github.sha }}"
+          BRANCH_NAME="cherry-pick-pr-${PR_NUMBER}-to-${TARGET_BRANCH}"
 
           echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
           echo "target_branch=${TARGET_BRANCH}" >> $GITHUB_OUTPUT
@@ -108,6 +138,12 @@ jobs:
             # Exit with error code to mark the step as failed
             exit 1
           fi
+          
+      - name: Comment on PR when skipped (not squash merge)
+        if: steps.create-branch.outputs.CHERRY_PICK_SUCCESSFUL == 'skipped'
+        env:
+          GH_TOKEN: ${{ secrets.CPP_GITHUB_RW_TOKEN }}
+        run: |
           
       - name: Comment on PR for cherry-pick failure
         if: steps.create-branch.outputs.CHERRY_PICK_SUCCESSFUL == 'false'
