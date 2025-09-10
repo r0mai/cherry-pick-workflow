@@ -186,6 +186,7 @@ jobs:
           ORIGINAL_TITLE="${{ github.event.pull_request.title }}"
           ORIGINAL_BODY="${{ github.event.pull_request.body }}"
           TARGET_BRANCH="${{ steps.create-branch.outputs.target_branch }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
 
           # Create the pull request with the skip-ci label to prevent CI runs
           gh pr create \
@@ -193,6 +194,7 @@ jobs:
             --head "${{ steps.create-branch.outputs.branch_name }}" \
             --title "[Cherry-pick to ${TARGET_BRANCH}] ${ORIGINAL_TITLE}" \
             --label "skip-ci" \
+            --assign "${PR_AUTHOR}"
             --body "${ORIGINAL_BODY}
 
           ---
