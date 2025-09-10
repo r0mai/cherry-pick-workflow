@@ -194,7 +194,7 @@ jobs:
             --head "${{ steps.create-branch.outputs.branch_name }}" \
             --title "[Cherry-pick to ${TARGET_BRANCH}] ${ORIGINAL_TITLE}" \
             --label "skip-ci" \
-            --assignee "${PR_AUTHOR}"
+            --assignee "${PR_AUTHOR}" \
             --body "${ORIGINAL_BODY}
 
           ---
